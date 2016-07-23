@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Phatty
+Keywords=phatty
+Exec=/usr/local/bin/phatty
+Icon=phatty
+Terminal=false
+Type=Application

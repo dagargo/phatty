@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+
+from phatty.editor import Editor
+
+Editor().main()
