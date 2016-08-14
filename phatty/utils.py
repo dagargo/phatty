@@ -35,8 +35,9 @@ CREATE_ERROR_MSG = 'Config file could not be created {:s}.'
 DEVICE = 'device'
 BULK_ON = 'bulk_on'
 DOWNLOAD_AUTO = 'download_auto'
+LFO_MIDI_SYNC = 'lfo_midi_sync'
 DEFAULT_CONFIG = {DEVICE:  connector.LPII_DEVICE_NAME,
-                  BULK_ON: False, DOWNLOAD_AUTO: True}
+                  BULK_ON: False, DOWNLOAD_AUTO: True, LFO_MIDI_SYNC: False}
 
 CONFIG_DIR = expanduser('~') + '/.' + APP_NAME
 CONFIG_FILE = CONFIG_DIR + '/config'
@@ -76,6 +77,7 @@ def read_config():
         file.close()
         return config
 
+
 def write_config(config):
     logger.debug('Writing config file...')
     with open(CONFIG_FILE, 'w') as file:
@@ -83,4 +85,5 @@ def write_config(config):
             file.write(json.dumps(config))
             logger.debug('Config file written.')
         except IOError as e:
-            logger.error('File could not be written: {:s}. Skipping...'.format(str(e)))
+            logger.error(
+                'File could not be written: {:s}. Skipping...'.format(str(e)))

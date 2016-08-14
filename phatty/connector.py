@@ -23,11 +23,13 @@ import mido
 from mido import Message
 import logging
 import time
+import math
 
 logger = logging.getLogger(__name__)
 
 INIT_MSG = [0x7E, 0x7F, 6, 1]
 PHATTY_MSG_WO_VERSION = [0x7e, 0x7f, 6, 2, 4, 0, 5, 0, 1]
+REQUEST_PANEL = [4, 5, 6, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 REQUEST_PATCH = [4, 5, 6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 REQUEST_BANK = [4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 REQUEST_BULK = [4, 5, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -50,9 +52,35 @@ LPII_DEVICE_NAME = 'Little Phatty SE II 20:0'
 MAX_DATA = 25
 MSG_LEN = 64
 SLEEP_TIME = 0.02
+FILTER_POLES_VALUES = [32 * i for i in range(0, 4)]
+MOD_SRC_5_VALUES = [0, 64]
+MOD_SRC_6_VALUES = [0, 64]
+LFO_RETRIGGER_VALUES = [0, 43, 86]
+VEL_TO_FILTER_VALUES = [0, 12, 19, 26, 33, 40,
+                        47, 54, 61, 68, 75, 82, 89, 96, 103, 110, 117]
+VEL_TO_AMP_VALUES = [8 * i for i in range(0, 16)]
+MOD_DEST_2_VALUES = [0, 25, 50, 75, 100]
+LFO_MIDI_SYNC_VALUES = [0, 64]
+RELEASE_VALUES = [0, 64]
+PW_VALUES = [16 * i for i in range(0, 7)]
+SCALE_VALUES = [i for i in range(0, 33)]
+LEGATO_VALUES = [0, 43, 86]
+GLIDE_ON_LEGATO_VALUES = [0, 64]
+KEYBOARD_PRIORITY_VALUES = [32 * i for i in range(0, 4)]
+ARP_PATTERN_VALUES = [0, 43, 86]
+ARP_MODE_VALUES = [0, 43, 86]
+ARP_OCTAVES_VALUES = [0, 19, 38, 57, 71, 90, 109]
+ARP_GATE_VALUES = [32 * i for i in range(0, 4)]
+ARP_CLOCK_SOURCE_VALUES = [0, 43, 86]
+ARP_CLOCK_DIVISION_VALUES = [i * 6 for i in range(0, 22)]
+ARP_CLOCK_DIVISION_VALUES.extend([127])
 
 mido.set_backend('mido.backends.rtmidi')
 logger.debug('Mido backend: {:s}'.format(str(mido.backend)))
+
+
+def create_controller(control, value):
+    return Message('control_change', channel=0, control=control, value=value)
 
 
 class Connector(object):
@@ -69,17 +97,25 @@ class Connector(object):
         """Disconnect from the Phatty."""
         if self.port:
             logger.debug('Disconnecing...')
-            self.port.close()
+            try:
+                self.port.close()
+            except IOError:
+                logger.error('IOError while disconnecting')
             self.port = None
 
     def send(self, message):
         if message.type == 'sysex':
             data = message.bytes()
-            for d in [data[i:i + MSG_LEN] for i in range(0, len(data), MSG_LEN)]:
+            packages = math.ceil(len(data) / MSG_LEN)
+            for i in range(0, packages):
+                start = i * MSG_LEN
+                end = start + MSG_LEN
+                d = data[start:end]
                 logger.debug('Sending message {:s}...'.format(
                     self.get_hex_data(d)))
                 self.port.output._rt.send_message(d)
-                time.sleep(SLEEP_TIME)
+                if i < packages - 1:
+                    time.sleep(SLEEP_TIME)
         else:
             self.port.output._rt.send_message(message.bytes())
 
@@ -101,6 +137,12 @@ class Connector(object):
         except IOError as e:
             logger.error('IOError while connecting')
 
+    def get_panel(self):
+        msg = []
+        msg.extend(REQUEST_PANEL)
+        self.tx_message(msg)
+        return self.rx_message()
+
     def get_preset(self, num):
         msg = []
         msg.extend(REQUEST_PATCH)
@@ -111,17 +153,24 @@ class Connector(object):
     def tx_message(self, data):
         msg = Message('sysex', data=data)
         logger.debug('Sending message {:s}...'.format(self.get_hex_data(data)))
-        self.port.send(msg)
+        try:
+            self.port.send(msg)
+        except IOError:
+            self.disconnect()
+            raise ConnectorError()
 
     def rx_message(self):
         data_array = []
         msg = self.port.receive()
         while msg.type != 'sysex':
-            msg = self.port.receive()
-        data = msg.data
+            try:
+                msg = self.port.receive()
+            except IOError:
+                self.disconnect()
+                raise ConnectorError()
         logger.debug('Receiving message {:s}...'.format(
-            self.get_hex_data(data)))
-        data_array.extend(data)
+            self.get_hex_data(msg.data)))
+        data_array.extend(msg.data)
         return data_array
 
     def get_hex_data(self, data):
@@ -172,3 +221,98 @@ class Connector(object):
     def save_bank_to_file(self, filename, data):
         messages = [Message('sysex', data=data)]
         mido.write_syx_file(filename, messages)
+
+    def set_panel_name(self, name):
+        logger.debug('Setting preset name to {:s}...'.format(name))
+        messages = []
+        messages.append(
+            Message('control_change', channel=0, control=119, value=0))
+        messages.append(
+            Message('control_change', channel=0, control=66, value=19))
+        messages.append(
+            Message('control_change', channel=0, control=66, value=15))
+        messages.append(
+            Message('control_change', channel=0, control=66, value=13))
+        messages.append(
+            Message('control_change', channel=0, control=66, value=1))
+        for c in name:
+            messages.append(
+                Message('control_change', channel=0, control=66, value=ord(c)))
+        for message in messages:
+            self.port.send(message)
+
+    # Global
+    def set_lfo_midi_sync(self, value):
+        self.port.send(create_controller(102, LFO_MIDI_SYNC_VALUES[value]))
+
+    # Filter and amp
+    def set_panel_filter_poles(self, value):
+        self.port.send(create_controller(109, FILTER_POLES_VALUES[value]))
+
+    def set_panel_vel_to_filter(self, value):
+        self.port.send(create_controller(110, VEL_TO_FILTER_VALUES[value]))
+
+    def set_panel_vel_to_amp(self, value):
+        self.port.send(create_controller(92, VEL_TO_AMP_VALUES[value]))
+
+    def set_panel_release(self, value):
+        self.port.send(create_controller(88, RELEASE_VALUES[value]))
+
+    # Keyboard and controls
+    def set_panel_scale(self, value):
+        self.port.send(create_controller(113, SCALE_VALUES[value]))
+
+    def set_panel_pw_up_amount(self, value):
+        self.port.send(create_controller(107, PW_VALUES[value]))
+
+    def set_panel_pw_down_amount(self, value):
+        self.port.send(create_controller(108, PW_VALUES[value]))
+
+    def set_panel_legato(self, value):
+        self.port.send(create_controller(112, LEGATO_VALUES[value]))
+
+    def set_panel_keyboard_priority(self, value):
+        self.port.send(create_controller(111, KEYBOARD_PRIORITY_VALUES[value]))
+
+    def set_panel_glide_on_legato(self, value):
+        self.port.send(create_controller(94, GLIDE_ON_LEGATO_VALUES[value]))
+
+    # Modulation
+    def set_panel_mod_source_5(self, value):
+        self.port.send(create_controller(104, MOD_SRC_5_VALUES[value]))
+
+    def set_panel_mod_source_6(self, value):
+        self.port.send(create_controller(105, MOD_SRC_6_VALUES[value]))
+
+    def set_panel_mod_dest_2(self, value):
+        self.port.send(create_controller(106, MOD_DEST_2_VALUES[value]))
+
+    def set_panel_lfo_key_retrigger(self, value):
+        self.port.send(create_controller(93, LFO_RETRIGGER_VALUES[value]))
+
+    # Arpeggiator
+    def set_panel_arp_pattern(self, value):
+        self.port.send(create_controller(117, ARP_PATTERN_VALUES[value]))
+
+    def set_panel_arp_mode(self, value):
+        self.port.send(create_controller(118, ARP_MODE_VALUES[value]))
+
+    def set_panel_arp_octaves(self, value):
+        self.port.send(create_controller(116, ARP_OCTAVES_VALUES[value]))
+
+    def set_panel_arp_gate(self, value):
+        self.port.send(create_controller(95, ARP_GATE_VALUES[value]))
+
+    def set_panel_arp_clock_source(self, value):
+        self.port.send(create_controller(114, ARP_CLOCK_SOURCE_VALUES[value]))
+
+    def set_panel_arp_clock_division(self, value):
+        self.port.send(create_controller(
+            115, ARP_CLOCK_DIVISION_VALUES[value]))
+
+
+class ConnectorError(IOError):
+    """Raise when there is a Connector error"""
+
+    def __init__(self):
+        super(ConnectorError, self).__init__('Connection error')
