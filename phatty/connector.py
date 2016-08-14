@@ -137,10 +137,14 @@ class Connector(object):
         except IOError as e:
             logger.error('IOError while connecting')
 
+    def get_panel_as_preset(self, preset):
+        msg = self.get_panel()
+        msg[2] = 0x5
+        msg[4] = preset
+        return msg
+
     def get_panel(self):
-        msg = []
-        msg.extend(REQUEST_PANEL)
-        self.tx_message(msg)
+        self.tx_message(REQUEST_PANEL)
         return self.rx_message()
 
     def get_preset(self, num):
@@ -149,6 +153,11 @@ class Connector(object):
         msg[REQ_PATCH_BYTE] = num
         self.tx_message(msg)
         return self.rx_message()
+
+    def set_preset(self, id):
+        msg = Message('program_change', channel=0, program=id)
+        logger.debug('Sending program change {:d}...'.format(id))
+        self.port.send(msg)
 
     def tx_message(self, data):
         msg = Message('sysex', data=data)
@@ -180,11 +189,6 @@ class Connector(object):
         if len(data) > MAX_DATA:
             s += '[...]'
         return s
-
-    def set_preset(self, id):
-        msg = Message('program_change', channel=0, program=id)
-        logger.debug('Sending program change {:d}...'.format(id))
-        self.port.send(msg)
 
     def get_bank(self):
         self.tx_message(REQUEST_BANK)

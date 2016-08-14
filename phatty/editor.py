@@ -341,7 +341,7 @@ class Editor(object):
         model, iter = self.preset_selection.get_selected()
         active_preset = model[iter][0]
         try:
-            panel = self.connector.get_panel()
+            panel = self.connector.get_panel_as_preset(active_preset)
             self.sysex_presets[active_preset] = panel
             self.presets[active_preset][1] = preset.get_name(panel)
             self.set_preset_attributes(active_preset)

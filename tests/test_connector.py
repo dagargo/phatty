@@ -38,6 +38,51 @@ class Test(unittest.TestCase):
         self.connector = Connector()
         self.connector.port = Mock()
 
+    def test_get_panel_as_preset(self):
+
+        def return_value():
+            return [i for i in range(0, 192)]
+
+        self.connector.get_panel = Mock(side_effect=return_value)
+        value = self.connector.get_panel_as_preset(37)
+        self.connector.get_panel.assert_called_once()
+        self.assertEqual(value[2], 0x5)
+        self.assertEqual(value[4], 37)
+
+    def test_get_panel(self):
+
+        def return_value():
+            return [i for i in range(0, 192)]
+
+        self.connector.tx_message = Mock()
+        self.connector.rx_message = Mock(side_effect=return_value)
+        value = self.connector.get_panel()
+        self.connector.tx_message.assert_called_once_with(
+            phatty.connector.REQUEST_PANEL)
+        self.connector.rx_message.assert_called_once()
+        self.assertEqual(value, return_value())
+
+    def test_get_preset(self):
+
+        def return_value():
+            return [i for i in range(0, 192)]
+
+        self.connector.tx_message = Mock()
+        self.connector.rx_message = Mock(side_effect=return_value)
+        value = self.connector.get_preset(37)
+        msg = []
+        msg.extend(phatty.connector.REQUEST_PATCH)
+        msg[phatty.connector.REQ_PATCH_BYTE] = 37
+        self.connector.tx_message.assert_called_once_with(msg)
+        self.connector.rx_message.assert_called_once()
+        self.assertEqual(value, return_value())
+
+    def test_set_preset(self):
+        self.connector.port.send = Mock()
+        self.connector.set_preset(37)
+        msg = Message('program_change', channel=0, program=37)
+        self.connector.port.send.assert_called_once_with(msg)
+
     def test_set_bulk(self):
         try:
             data = []
