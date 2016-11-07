@@ -36,7 +36,7 @@ DEVICE = 'device'
 BULK_ON = 'bulk_on'
 DOWNLOAD_AUTO = 'download_auto'
 LFO_MIDI_SYNC = 'lfo_midi_sync'
-DEFAULT_CONFIG = {DEVICE:  connector.LPII_DEVICE_NAME,
+DEFAULT_CONFIG = {DEVICE:  '',
                   BULK_ON: False, DOWNLOAD_AUTO: True, LFO_MIDI_SYNC: False}
 
 CONFIG_DIR = expanduser('~') + '/.' + APP_NAME
