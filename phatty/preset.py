@@ -61,8 +61,10 @@ def get_char(preset, position):
         index = ((preset[k] & 0x1) << 6) | (preset[k + 1] & 0x3f)
     else:
         index = ((preset[k + 2] & 0x3) << 4) | ((preset[k + 3] & 0x3c) >> 2)
-    return ALPHABET[index]
-
+    if index >= len(ALPHABET):
+        return '?'
+    else:
+        return ALPHABET[index]
 
 def set_char(preset, c, position):
     index = ALPHABET.find(c)
