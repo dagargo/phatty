@@ -48,10 +48,11 @@ BULK_SIZE = RED_BULK_SIZE + 202
 INVALID_BANK_FILE = 'Invalid bank file'
 INVALID_BULK_FILE = 'Invalid bulk file'
 HANDSHAKE_MSG = 'Handshake ok. Version {:s}.'
-LPII_DEVICE_NAME = 'Little Phatty SE II 20:0'
 MAX_DATA = 25
+RECEIVE_RETRIES = 50
+RETRY_SLEEP_TIME = 0.1
 MSG_LEN = 64
-SLEEP_TIME = 0.02
+SLEEP_TIME = 0.125
 FILTER_POLES_VALUES = [32 * i for i in range(0, 4)]
 MOD_SRC_5_VALUES = [0, 64]
 MOD_SRC_6_VALUES = [0, 64]
@@ -75,7 +76,6 @@ ARP_CLOCK_SOURCE_VALUES = [0, 43, 86]
 ARP_CLOCK_DIVISION_VALUES = [i * 6 for i in range(0, 22)]
 ARP_CLOCK_DIVISION_VALUES.extend([127])
 
-mido.set_backend('mido.backends.rtmidi')
 logger.debug('Mido backend: {:s}'.format(str(mido.backend)))
 
 
@@ -103,31 +103,41 @@ class Connector(object):
                 logger.error('IOError while disconnecting')
             self.port = None
 
-    def send(self, message):
-        if message.type == 'sysex':
-            data = message.bytes()
-            packages = math.ceil(len(data) / MSG_LEN)
-            for i in range(0, packages):
-                start = i * MSG_LEN
-                end = start + MSG_LEN
-                d = data[start:end]
-                logger.debug('Sending message {:s}...'.format(
-                    self.get_hex_data(d)))
-                self.port.output._rt.send_message(d)
-                if i < packages - 1:
-                    time.sleep(SLEEP_TIME)
-        else:
-            self.port.output._rt.send_message(message.bytes())
+    def send(self, msg):
+        """Send a message on the port.
+        A copy of the message will be sent, so you can safely modify
+        the original message without any unexpected consequences.
+        """
+        if not isinstance(msg, Message):
+            raise TypeError('argument to send() must be a Message')
+        elif self.port.closed:
+            raise ValueError('send() called on closed port')
 
-    def connect(self, device):
+        with self.port._lock:
+            if not msg.is_frozen:
+                msg = msg.copy()
+            if msg.type == 'sysex':
+                t = msg.bytes()
+                while len(t) > MSG_LEN:
+                    h = t[:MSG_LEN]
+                    t = t[MSG_LEN:]
+                    self.port._midiout.send_message(h)
+                    time.sleep(SLEEP_TIME)
+                self.port._midiout.send_message(t)
+            else:
+                self.port._midiout.send_message(msg.bytes())
+
+    def connect(self, device, callback):
         """Connect to the Phatty."""
-        logger.debug('Connecting...')
+        logger.debug('Connecting to {:s}...'.format(device))
         try:
             self.port = mido.open_ioport(device)
-            self.port._send = self.send
+            self.callback = callback
+            self.port.send = self.send
             logger.debug('Handshaking...')
             self.tx_message(INIT_MSG)
             response = self.rx_message()
+            self.port.callback = self.process_message
             if response[0:9] == PHATTY_MSG_WO_VERSION:
                 self.sw_version = '.'.join([str(i) for i in response[9:13]])
                 logger.debug(HANDSHAKE_MSG.format(self.sw_version))
@@ -135,7 +145,12 @@ class Connector(object):
                 logger.debug('Bad handshake. Disconnecting...')
                 self.disconnect()
         except IOError as e:
-            logger.error('IOError while connecting')
+            logger.error('IOError while connecting: "{:s}"'.format(str(e)))
+            self.disconnect();
+
+    def process_message(self, message):
+        logger.debug('Processing message...')
+        self.callback(message)
 
     def get_panel_as_preset(self, preset):
         msg = self.get_panel()
@@ -144,15 +159,21 @@ class Connector(object):
         return msg
 
     def get_panel(self):
+        self.port.callback = None
         self.tx_message(REQUEST_PANEL)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def get_preset(self, num):
+        self.port.callback = None
         msg = []
         msg.extend(REQUEST_PATCH)
         msg[REQ_PATCH_BYTE] = num
         self.tx_message(msg)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def set_preset(self, id):
         msg = Message('program_change', channel=0, program=id)
@@ -169,18 +190,22 @@ class Connector(object):
             raise ConnectorError()
 
     def rx_message(self):
-        data_array = []
-        msg = self.port.receive()
-        while msg.type != 'sysex':
-            try:
-                msg = self.port.receive()
-            except IOError:
-                self.disconnect()
-                raise ConnectorError()
-        logger.debug('Receiving message {:s}...'.format(
-            self.get_hex_data(msg.data)))
-        data_array.extend(msg.data)
-        return data_array
+        try:
+            for i in range(0, RECEIVE_RETRIES):
+                for msg in self.port.iter_pending():
+                    if msg.type == 'sysex':
+                        logger.debug('Receiving message {:s}...'.format(
+                            self.get_hex_data(msg.data)))
+                        data_array = []
+                        data_array.extend(msg.data)
+                        return data_array
+                    else:
+                        self.callback(msg)
+                time.sleep(RETRY_SLEEP_TIME)
+        except IOError:
+            self.disconnect()
+            raise ConnectorError()
+        raise IOError('No message received')
 
     def get_hex_data(self, data):
         if len(data) > MAX_DATA:
@@ -191,12 +216,18 @@ class Connector(object):
         return s
 
     def get_bank(self):
+        self.port.callback = None
         self.tx_message(REQUEST_BANK)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def get_bulk(self):
+        self.port.callback = None
         self.tx_message(REQUEST_BULK)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def set_bank(self, data):
         logger.debug('Sending bank...')

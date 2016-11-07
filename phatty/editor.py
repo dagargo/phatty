@@ -27,6 +27,7 @@ from threading import Thread, Lock
 import logging
 import pkg_resources
 from phatty import connector
+from phatty.connector import ConnectorError
 from phatty import preset
 from phatty import utils
 import sys
@@ -454,7 +455,7 @@ class Editor(object):
 
     def connect(self):
         device = self.config[utils.DEVICE]
-        self.connector.connect(device)
+        self.connector.connect(device, self.callback)
         if self.connector.connected():
             conn_msg = CONN_MSG.format(self.connector.sw_version)
             self.set_status_msg(conn_msg)
@@ -659,6 +660,15 @@ class Editor(object):
     def show_about(self):
         self.about_dialog.run()
         self.about_dialog.hide()
+
+    def callback(self, message):
+        if message.type == 'program_change':
+            program = message.program
+            logger.debug('Preset {:d} selected'.format(program))
+            if program >= 0 and program < connector.MAX_PRESETS and self.presets:
+                self.preset_selection.disconnect_by_func(self.selection_changed)
+                self.preset_list.set_cursor(program)
+                self.preset_selection.connect('changed', self.selection_changed)
 
     def quit(self):
         logger.debug('Quitting...')
