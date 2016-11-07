@@ -48,7 +48,6 @@ BULK_SIZE = RED_BULK_SIZE + 202
 INVALID_BANK_FILE = 'Invalid bank file'
 INVALID_BULK_FILE = 'Invalid bulk file'
 HANDSHAKE_MSG = 'Handshake ok. Version {:s}.'
-LPII_DEVICE_NAME = 'Little Phatty SE II 20:0'
 MAX_DATA = 25
 MSG_LEN = 64
 SLEEP_TIME = 0.02
