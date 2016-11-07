@@ -76,6 +76,8 @@ ARP_CLOCK_SOURCE_VALUES = [0, 43, 86]
 ARP_CLOCK_DIVISION_VALUES = [i * 6 for i in range(0, 22)]
 ARP_CLOCK_DIVISION_VALUES.extend([127])
 
+#TODO
+#mido.set_backend('mido.backends.amidi')
 logger.debug('Mido backend: {:s}'.format(str(mido.backend)))
 
 
@@ -103,6 +105,7 @@ class Connector(object):
                 logger.error('IOError while disconnecting')
             self.port = None
 
+#TODO: this must dissapear
     def send(self, msg):
         """Send a message on the port.
         A copy of the message will be sent, so you can safely modify
@@ -127,11 +130,18 @@ class Connector(object):
             else:
                 self.port._midiout.send_message(msg.bytes())
 
+#TODO: fix
+    def error(self, a, b, c):
+        logger.error('---------------IOERROR---------------')
+        raise IOError('sdfghjk')
+
     def connect(self, device, callback):
         """Connect to the Phatty."""
         logger.debug('Connecting to {:s}...'.format(device))
         try:
             self.port = mido.open_ioport(device)
+#TODO: remove?
+            self.port._midiout.set_error_callback(self.error)
             self.callback = callback
             self.port.send = self.send
             logger.debug('Handshaking...')
@@ -205,7 +215,8 @@ class Connector(object):
         except IOError:
             self.disconnect()
             raise ConnectorError()
-        raise IOError('No message received')
+        self.disconnect()
+        raise ConnectorError()
 
     def get_hex_data(self, data):
         if len(data) > MAX_DATA:
