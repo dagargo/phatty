@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Phatty. If not, see <http://www.gnu.org/licenses/>.
 
-"""Phatty general utils"""
+"""Phatty utils"""
 
 from phatty import connector
 import json

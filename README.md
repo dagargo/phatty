@@ -18,4 +18,4 @@ You can easily install them by running `sudo apt-get install python3 python3-set
 To install Phatty symply run `make && sudo make install`.
 
 ## Known issues
-At the moment, the underlying MIDI libraries do not raise an error if the synth is disconnected and thus the user does not get any message in this case.
+At the moment, the underlying MIDI libraries do not raise an error if the synth is disconnected. Thus, neither the application can be aware of the error nor user get any error message.

@@ -27,6 +27,7 @@ from threading import Thread, Lock
 import logging
 import pkg_resources
 from phatty import connector
+from phatty.connector import ConnectorError
 from phatty import preset
 from phatty import utils
 import sys
@@ -45,7 +46,7 @@ version = pkg_resources.get_distribution(PKG_NAME).version
 
 
 def print_help():
-    print ('Usage: {:s} [-v]'.format(PKG_NAME))
+    print('Usage: {:s} [-v]'.format(PKG_NAME))
 
 log_level = logging.ERROR
 try:
@@ -65,16 +66,8 @@ logger = logging.getLogger(__name__)
 
 utils.create_config()
 
-logger.debug('Reading glade file...')
-with open(glade_file, 'r') as file:
-    try:
-        glade_contents = file.read()
-    except IOError as e:
-        logger.error('Glade file could not be read. Exiting...')
-        sys.exit(-1)
-
 builder = Gtk.Builder()
-builder.add_from_string(glade_contents)
+builder.add_from_file(glade_file)
 
 
 class TransferDialog(object):
@@ -151,7 +144,7 @@ class SettingsDialog(object):
     def show(self):
         self.device_liststore.clear()
         i = 0
-        for port in mido.get_output_names():
+        for port in connector.get_ports():
             logger.debug('Adding port {:s}...'.format(port))
             self.device_liststore.append([port])
             if self.phatty.config[utils.DEVICE] == port:
@@ -454,7 +447,7 @@ class Editor(object):
 
     def connect(self):
         device = self.config[utils.DEVICE]
-        self.connector.connect(device)
+        self.connector.connect(device, self.callback)
         if self.connector.connected():
             conn_msg = CONN_MSG.format(self.connector.sw_version)
             self.set_status_msg(conn_msg)
@@ -589,7 +582,8 @@ class Editor(object):
             self.ui_reconnect()
 
     def save_bank_to_file(self):
-        title = 'Receiving ' + 'bulk' if self.config[utils.BULK_ON] else 'bank'
+        type = 'bulk' if self.config[utils.BULK_ON] else 'bank'
+        title = 'Receiving {:s}'.format(type)
         self.transfer_dialog.show_pulse(title)
         GLib.timeout_add(50, self.transfer_dialog.pulse_progressbar)
         self.thread = Thread(target=self.get_bank_and_save)
@@ -659,6 +653,17 @@ class Editor(object):
     def show_about(self):
         self.about_dialog.run()
         self.about_dialog.hide()
+
+    def callback(self, message):
+        if message.type == 'program_change':
+            program = message.program
+            logger.debug('Preset {:d} selected'.format(program))
+            if program >= 0 and program < connector.MAX_PRESETS and self.presets:
+                self.preset_selection.disconnect_by_func(
+                    self.selection_changed)
+                self.preset_list.set_cursor(program)
+                self.preset_selection.connect(
+                    'changed', self.selection_changed)
 
     def quit(self):
         logger.debug('Quitting...')

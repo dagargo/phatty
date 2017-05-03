@@ -49,8 +49,10 @@ INVALID_BANK_FILE = 'Invalid bank file'
 INVALID_BULK_FILE = 'Invalid bulk file'
 HANDSHAKE_MSG = 'Handshake ok. Version {:s}.'
 MAX_DATA = 25
+RECEIVE_RETRIES = 50
+RETRY_SLEEP_TIME = 0.1
 MSG_LEN = 64
-SLEEP_TIME = 0.02
+SLEEP_TIME = 0.125
 FILTER_POLES_VALUES = [32 * i for i in range(0, 4)]
 MOD_SRC_5_VALUES = [0, 64]
 MOD_SRC_6_VALUES = [0, 64]
@@ -82,6 +84,10 @@ def create_controller(control, value):
     return Message('control_change', channel=0, control=control, value=value)
 
 
+def get_ports():
+    return mido.get_ioport_names()
+
+
 class Connector(object):
     """Phatty connector"""
 
@@ -102,31 +108,44 @@ class Connector(object):
                 logger.error('IOError while disconnecting')
             self.port = None
 
-    def send(self, message):
-        if message.type == 'sysex':
-            data = message.bytes()
-            packages = math.ceil(len(data) / MSG_LEN)
-            for i in range(0, packages):
-                start = i * MSG_LEN
-                end = start + MSG_LEN
-                d = data[start:end]
-                logger.debug('Sending message {:s}...'.format(
-                    self.get_hex_data(d)))
-                self.port.output._rt.send_message(d)
-                if i < packages - 1:
-                    time.sleep(SLEEP_TIME)
-        else:
-            self.port.output._rt.send_message(message.bytes())
+    # We are overriding the send function in mido ports.py.
+    # The reason is that the ALSA sequencer has a buffer smaller than the
+    # bank or bulk size.
+    def send(self, msg):
+        """Send a message on the port.
+        A copy of the message will be sent, so you can safely modify
+        the original message without any unexpected consequences.
+        """
+        if not self.is_output:
+            raise ValueError('Not an output port')
+        elif not isinstance(msg, Message):
+            raise TypeError('argument to send() must be a Message')
+        elif self.closed:
+            raise ValueError('send() called on closed port')
 
-    def connect(self, device):
+        with self.port._lock:
+            if msg.type == 'sysex':
+                t = msg.copy().bytes()
+                while len(t) > MSG_LEN:
+                    h = t[:MSG_LEN]
+                    t = t[MSG_LEN:]
+                    self.port.output._rt.send_message(h)
+                    time.sleep(SLEEP_TIME)
+                self.port.output._rt.send_message(t)
+            else:
+                self.port.output._rt.send_message(msg.bytes())
+
+    def connect(self, device, callback):
         """Connect to the Phatty."""
-        logger.debug('Connecting...')
+        logger.debug('Connecting to {:s}...'.format(device))
         try:
             self.port = mido.open_ioport(device)
-            self.port._send = self.send
+            self.callback = callback
+            self.port.send = self.send
             logger.debug('Handshaking...')
             self.tx_message(INIT_MSG)
             response = self.rx_message()
+            self.port.callback = self.process_message
             if response[0:9] == PHATTY_MSG_WO_VERSION:
                 self.sw_version = '.'.join([str(i) for i in response[9:13]])
                 logger.debug(HANDSHAKE_MSG.format(self.sw_version))
@@ -134,7 +153,12 @@ class Connector(object):
                 logger.debug('Bad handshake. Disconnecting...')
                 self.disconnect()
         except IOError as e:
-            logger.error('IOError while connecting')
+            logger.error('IOError while connecting: "{:s}"'.format(str(e)))
+            self.disconnect()
+
+    def process_message(self, message):
+        logger.debug('Processing message...')
+        self.callback(message)
 
     def get_panel_as_preset(self, preset):
         msg = self.get_panel()
@@ -143,15 +167,21 @@ class Connector(object):
         return msg
 
     def get_panel(self):
+        self.port.callback = None
         self.tx_message(REQUEST_PANEL)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def get_preset(self, num):
+        self.port.callback = None
         msg = []
         msg.extend(REQUEST_PATCH)
         msg[REQ_PATCH_BYTE] = num
         self.tx_message(msg)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def set_preset(self, id):
         msg = Message('program_change', channel=0, program=id)
@@ -168,18 +198,23 @@ class Connector(object):
             raise ConnectorError()
 
     def rx_message(self):
-        data_array = []
-        msg = self.port.receive()
-        while msg.type != 'sysex':
-            try:
-                msg = self.port.receive()
-            except IOError:
-                self.disconnect()
-                raise ConnectorError()
-        logger.debug('Receiving message {:s}...'.format(
-            self.get_hex_data(msg.data)))
-        data_array.extend(msg.data)
-        return data_array
+        try:
+            for i in range(0, RECEIVE_RETRIES):
+                for msg in self.port.iter_pending():
+                    if msg.type == 'sysex':
+                        logger.debug('Receiving message {:s}...'.format(
+                            self.get_hex_data(msg.data)))
+                        data_array = []
+                        data_array.extend(msg.data)
+                        return data_array
+                    else:
+                        self.callback(msg)
+                time.sleep(RETRY_SLEEP_TIME)
+        except IOError:
+            self.disconnect()
+            raise ConnectorError()
+        self.disconnect()
+        raise ConnectorError()
 
     def get_hex_data(self, data):
         if len(data) > MAX_DATA:
@@ -190,12 +225,18 @@ class Connector(object):
         return s
 
     def get_bank(self):
+        self.port.callback = None
         self.tx_message(REQUEST_BANK)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def get_bulk(self):
+        self.port.callback = None
         self.tx_message(REQUEST_BULK)
-        return self.rx_message()
+        m = self.rx_message()
+        self.port.callback = self.process_message
+        return m
 
     def set_bank(self, data):
         logger.debug('Sending bank...')
@@ -246,72 +287,92 @@ class Connector(object):
 
     # Global
     def set_lfo_midi_sync(self, value):
-        self.port.send(create_controller(102, LFO_MIDI_SYNC_VALUES[value]))
+        msg = create_controller(102, LFO_MIDI_SYNC_VALUES[value])
+        self.port.send(msg)
 
     # Filter and amp
     def set_panel_filter_poles(self, value):
-        self.port.send(create_controller(109, FILTER_POLES_VALUES[value]))
+        msg = create_controller(109, FILTER_POLES_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_vel_to_filter(self, value):
-        self.port.send(create_controller(110, VEL_TO_FILTER_VALUES[value]))
+        msg = create_controller(110, VEL_TO_FILTER_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_vel_to_amp(self, value):
-        self.port.send(create_controller(92, VEL_TO_AMP_VALUES[value]))
+        msg = create_controller(92, VEL_TO_AMP_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_release(self, value):
-        self.port.send(create_controller(88, RELEASE_VALUES[value]))
+        msg = create_controller(88, RELEASE_VALUES[value])
+        self.port.send(msg)
 
     # Keyboard and controls
     def set_panel_scale(self, value):
-        self.port.send(create_controller(113, SCALE_VALUES[value]))
+        msg = create_controller(113, SCALE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_pw_up_amount(self, value):
-        self.port.send(create_controller(107, PW_VALUES[value]))
+        msg = create_controller(107, PW_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_pw_down_amount(self, value):
-        self.port.send(create_controller(108, PW_VALUES[value]))
+        msg = create_controller(108, PW_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_legato(self, value):
-        self.port.send(create_controller(112, LEGATO_VALUES[value]))
+        msg = create_controller(112, LEGATO_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_keyboard_priority(self, value):
-        self.port.send(create_controller(111, KEYBOARD_PRIORITY_VALUES[value]))
+        msg = create_controller(111, KEYBOARD_PRIORITY_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_glide_on_legato(self, value):
-        self.port.send(create_controller(94, GLIDE_ON_LEGATO_VALUES[value]))
+        msg = create_controller(94, GLIDE_ON_LEGATO_VALUES[value])
+        self.port.send(msg)
 
     # Modulation
     def set_panel_mod_source_5(self, value):
-        self.port.send(create_controller(104, MOD_SRC_5_VALUES[value]))
+        msg = create_controller(104, MOD_SRC_5_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_mod_source_6(self, value):
-        self.port.send(create_controller(105, MOD_SRC_6_VALUES[value]))
+        msg = create_controller(105, MOD_SRC_6_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_mod_dest_2(self, value):
-        self.port.send(create_controller(106, MOD_DEST_2_VALUES[value]))
+        msg = create_controller(106, MOD_DEST_2_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_lfo_key_retrigger(self, value):
-        self.port.send(create_controller(93, LFO_RETRIGGER_VALUES[value]))
+        msg = create_controller(93, LFO_RETRIGGER_VALUES[value])
+        self.port.send(msg)
 
     # Arpeggiator
     def set_panel_arp_pattern(self, value):
-        self.port.send(create_controller(117, ARP_PATTERN_VALUES[value]))
+        msg = create_controller(117, ARP_PATTERN_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_mode(self, value):
-        self.port.send(create_controller(118, ARP_MODE_VALUES[value]))
+        msg = create_controller(118, ARP_MODE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_octaves(self, value):
-        self.port.send(create_controller(116, ARP_OCTAVES_VALUES[value]))
+        msg = create_controller(116, ARP_OCTAVES_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_gate(self, value):
-        self.port.send(create_controller(95, ARP_GATE_VALUES[value]))
+        msg = create_controller(95, ARP_GATE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_clock_source(self, value):
-        self.port.send(create_controller(114, ARP_CLOCK_SOURCE_VALUES[value]))
+        msg = create_controller(114, ARP_CLOCK_SOURCE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_clock_division(self, value):
-        self.port.send(create_controller(
-            115, ARP_CLOCK_DIVISION_VALUES[value]))
+        msg = create_controller(115, ARP_CLOCK_DIVISION_VALUES[value])
+        self.port.send(msg)
 
 
 class ConnectorError(IOError):

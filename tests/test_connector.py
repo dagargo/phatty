@@ -25,6 +25,7 @@ from mido import Message
 from mock import Mock
 from mock import call
 from phatty.connector import Connector
+from struct import unpack
 
 BAD_BANK_FILE_NAME = os.path.join(
     os.path.dirname(__file__), 'resources/preset.syx')
@@ -148,18 +149,22 @@ class Test(unittest.TestCase):
             self.assertTrue(str(e) == phatty.connector.INVALID_BANK_FILE)
 
     def set_bank_from_file(self, filename):
-        with open(filename, 'rb') as file:
-            data = file.read()
-            data = list(data[1:len(data) - 1])
-            self.connector.set_bank = Mock()
-            self.connector.set_bank_from_file(filename)
-        self.connector.set_bank.assert_called_once_with(data)
+        data = mido.read_syx_file(filename)[0].bytes()
+        data = data[1:len(data) - 1]
+        self.connector.set_bank_from_file(filename)
+        return data
 
     def test_set_bank_from_bank_file(self):
-        self.set_bank_from_file(BANK_FILE_NAME)
+        self.connector.set_bank = Mock()
+        data = self.set_bank_from_file(BANK_FILE_NAME)
+        self.connector.set_bank.assert_called_once_with(data)
 
     def test_set_bank_from_bulk_file(self):
-        self.set_bank_from_file(BULK_FILE_NAME)
+        self.connector.set_bank = Mock(side_effect=ValueError)
+        self.connector.set_bulk = Mock()
+        data = self.set_bank_from_file(BULK_FILE_NAME)
+        self.connector.set_bank.assert_called_once_with(data)
+        self.connector.set_bulk.assert_called_once_with(data)
 
     def test_set_bank_from_bank_file_error(self):
         try:
