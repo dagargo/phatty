@@ -76,13 +76,16 @@ ARP_CLOCK_SOURCE_VALUES = [0, 43, 86]
 ARP_CLOCK_DIVISION_VALUES = [i * 6 for i in range(0, 22)]
 ARP_CLOCK_DIVISION_VALUES.extend([127])
 
-#TODO
-#mido.set_backend('mido.backends.amidi')
+mido.set_backend('mido.backends.rtmidi')
 logger.debug('Mido backend: {:s}'.format(str(mido.backend)))
 
 
 def create_controller(control, value):
     return Message('control_change', channel=0, control=control, value=value)
+
+
+def get_ports():
+    return mido.get_ioport_names()
 
 
 class Connector(object):
@@ -105,43 +108,38 @@ class Connector(object):
                 logger.error('IOError while disconnecting')
             self.port = None
 
-#TODO: this must dissapear
+    # We are overriding the send function in mido ports.py.
+    # The reason is that the ALSA sequencer has a buffer smaller than the
+    # bank or bulk size.
     def send(self, msg):
         """Send a message on the port.
         A copy of the message will be sent, so you can safely modify
         the original message without any unexpected consequences.
         """
-        if not isinstance(msg, Message):
+        if not self.is_output:
+            raise ValueError('Not an output port')
+        elif not isinstance(msg, Message):
             raise TypeError('argument to send() must be a Message')
-        elif self.port.closed:
+        elif self.closed:
             raise ValueError('send() called on closed port')
 
         with self.port._lock:
-            if not msg.is_frozen:
-                msg = msg.copy()
             if msg.type == 'sysex':
-                t = msg.bytes()
+                t = msg.copy().bytes()
                 while len(t) > MSG_LEN:
                     h = t[:MSG_LEN]
                     t = t[MSG_LEN:]
-                    self.port._midiout.send_message(h)
+                    self.port.output._rt.send_message(h)
                     time.sleep(SLEEP_TIME)
-                self.port._midiout.send_message(t)
+                self.port.output._rt.send_message(t)
             else:
-                self.port._midiout.send_message(msg.bytes())
-
-#TODO: fix
-    def error(self, a, b, c):
-        logger.error('---------------IOERROR---------------')
-        raise IOError('sdfghjk')
+                self.port.output._rt.send_message(msg.bytes())
 
     def connect(self, device, callback):
         """Connect to the Phatty."""
         logger.debug('Connecting to {:s}...'.format(device))
         try:
             self.port = mido.open_ioport(device)
-#TODO: remove?
-            self.port._midiout.set_error_callback(self.error)
             self.callback = callback
             self.port.send = self.send
             logger.debug('Handshaking...')
@@ -156,7 +154,7 @@ class Connector(object):
                 self.disconnect()
         except IOError as e:
             logger.error('IOError while connecting: "{:s}"'.format(str(e)))
-            self.disconnect();
+            self.disconnect()
 
     def process_message(self, message):
         logger.debug('Processing message...')
@@ -289,72 +287,92 @@ class Connector(object):
 
     # Global
     def set_lfo_midi_sync(self, value):
-        self.port.send(create_controller(102, LFO_MIDI_SYNC_VALUES[value]))
+        msg = create_controller(102, LFO_MIDI_SYNC_VALUES[value])
+        self.port.send(msg)
 
     # Filter and amp
     def set_panel_filter_poles(self, value):
-        self.port.send(create_controller(109, FILTER_POLES_VALUES[value]))
+        msg = create_controller(109, FILTER_POLES_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_vel_to_filter(self, value):
-        self.port.send(create_controller(110, VEL_TO_FILTER_VALUES[value]))
+        msg = create_controller(110, VEL_TO_FILTER_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_vel_to_amp(self, value):
-        self.port.send(create_controller(92, VEL_TO_AMP_VALUES[value]))
+        msg = create_controller(92, VEL_TO_AMP_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_release(self, value):
-        self.port.send(create_controller(88, RELEASE_VALUES[value]))
+        msg = create_controller(88, RELEASE_VALUES[value])
+        self.port.send(msg)
 
     # Keyboard and controls
     def set_panel_scale(self, value):
-        self.port.send(create_controller(113, SCALE_VALUES[value]))
+        msg = create_controller(113, SCALE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_pw_up_amount(self, value):
-        self.port.send(create_controller(107, PW_VALUES[value]))
+        msg = create_controller(107, PW_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_pw_down_amount(self, value):
-        self.port.send(create_controller(108, PW_VALUES[value]))
+        msg = create_controller(108, PW_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_legato(self, value):
-        self.port.send(create_controller(112, LEGATO_VALUES[value]))
+        msg = create_controller(112, LEGATO_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_keyboard_priority(self, value):
-        self.port.send(create_controller(111, KEYBOARD_PRIORITY_VALUES[value]))
+        msg = create_controller(111, KEYBOARD_PRIORITY_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_glide_on_legato(self, value):
-        self.port.send(create_controller(94, GLIDE_ON_LEGATO_VALUES[value]))
+        msg = create_controller(94, GLIDE_ON_LEGATO_VALUES[value])
+        self.port.send(msg)
 
     # Modulation
     def set_panel_mod_source_5(self, value):
-        self.port.send(create_controller(104, MOD_SRC_5_VALUES[value]))
+        msg = create_controller(104, MOD_SRC_5_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_mod_source_6(self, value):
-        self.port.send(create_controller(105, MOD_SRC_6_VALUES[value]))
+        msg = create_controller(105, MOD_SRC_6_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_mod_dest_2(self, value):
-        self.port.send(create_controller(106, MOD_DEST_2_VALUES[value]))
+        msg = create_controller(106, MOD_DEST_2_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_lfo_key_retrigger(self, value):
-        self.port.send(create_controller(93, LFO_RETRIGGER_VALUES[value]))
+        msg = create_controller(93, LFO_RETRIGGER_VALUES[value])
+        self.port.send(msg)
 
     # Arpeggiator
     def set_panel_arp_pattern(self, value):
-        self.port.send(create_controller(117, ARP_PATTERN_VALUES[value]))
+        msg = create_controller(117, ARP_PATTERN_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_mode(self, value):
-        self.port.send(create_controller(118, ARP_MODE_VALUES[value]))
+        msg = create_controller(118, ARP_MODE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_octaves(self, value):
-        self.port.send(create_controller(116, ARP_OCTAVES_VALUES[value]))
+        msg = create_controller(116, ARP_OCTAVES_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_gate(self, value):
-        self.port.send(create_controller(95, ARP_GATE_VALUES[value]))
+        msg = create_controller(95, ARP_GATE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_clock_source(self, value):
-        self.port.send(create_controller(114, ARP_CLOCK_SOURCE_VALUES[value]))
+        msg = create_controller(114, ARP_CLOCK_SOURCE_VALUES[value])
+        self.port.send(msg)
 
     def set_panel_arp_clock_division(self, value):
-        self.port.send(create_controller(
-            115, ARP_CLOCK_DIVISION_VALUES[value]))
+        msg = create_controller(115, ARP_CLOCK_DIVISION_VALUES[value])
+        self.port.send(msg)
 
 
 class ConnectorError(IOError):

@@ -66,6 +66,7 @@ def get_char(preset, position):
     else:
         return ALPHABET[index]
 
+
 def set_char(preset, c, position):
     index = ALPHABET.find(c)
     if index == -1:
