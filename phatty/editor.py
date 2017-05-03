@@ -46,7 +46,7 @@ version = pkg_resources.get_distribution(PKG_NAME).version
 
 
 def print_help():
-    print ('Usage: {:s} [-v]'.format(PKG_NAME))
+    print('Usage: {:s} [-v]'.format(PKG_NAME))
 
 log_level = logging.ERROR
 try:
@@ -144,7 +144,7 @@ class SettingsDialog(object):
     def show(self):
         self.device_liststore.clear()
         i = 0
-        for port in mido.get_output_names():
+        for port in connector.get_ports():
             logger.debug('Adding port {:s}...'.format(port))
             self.device_liststore.append([port])
             if self.phatty.config[utils.DEVICE] == port:
@@ -582,7 +582,8 @@ class Editor(object):
             self.ui_reconnect()
 
     def save_bank_to_file(self):
-        title = 'Receiving ' + 'bulk' if self.config[utils.BULK_ON] else 'bank'
+        type = 'bulk' if self.config[utils.BULK_ON] else 'bank'
+        title = 'Receiving {:s}'.format(type)
         self.transfer_dialog.show_pulse(title)
         GLib.timeout_add(50, self.transfer_dialog.pulse_progressbar)
         self.thread = Thread(target=self.get_bank_and_save)
@@ -658,9 +659,11 @@ class Editor(object):
             program = message.program
             logger.debug('Preset {:d} selected'.format(program))
             if program >= 0 and program < connector.MAX_PRESETS and self.presets:
-                self.preset_selection.disconnect_by_func(self.selection_changed)
+                self.preset_selection.disconnect_by_func(
+                    self.selection_changed)
                 self.preset_list.set_cursor(program)
-                self.preset_selection.connect('changed', self.selection_changed)
+                self.preset_selection.connect(
+                    'changed', self.selection_changed)
 
     def quit(self):
         logger.debug('Quitting...')
