@@ -116,11 +116,11 @@ class Connector(object):
         A copy of the message will be sent, so you can safely modify
         the original message without any unexpected consequences.
         """
-        if not self.is_output:
+        if not self.port.is_output:
             raise ValueError('Not an output port')
         elif not isinstance(msg, Message):
             raise TypeError('argument to send() must be a Message')
-        elif self.closed:
+        elif self.port.closed:
             raise ValueError('send() called on closed port')
 
         with self.port._lock:
