@@ -4,7 +4,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 setup(name='Phatty',
-    version='1.2',
+    version='1.2.1',
     description='Library editor for Moog Little Phatty',
     author='David García Goñi',
     author_email='dagargo@gmail.com',
