@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.20.0 
+<!-- Generated with glade 3.20.0
 
-Copyright (C) David García Goñi
+Copyright (C) 2017 David García Goñi
 
 This file is part of Phatty.
 
@@ -25,7 +25,7 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
     <property name="can_focus">False</property>
     <property name="type_hint">normal</property>
     <property name="program_name">Phatty</property>
-    <property name="copyright" translatable="yes">Copyright © 2016 David García Goñi</property>
+    <property name="copyright" translatable="yes">Copyright © 2017 David García Goñi</property>
     <property name="comments" translatable="yes">Phatty is a library editor for Moog Little Phatty</property>
     <property name="website">https://github.com/dagargo/phatty</property>
     <property name="authors">David García Goñi&lt;dagargo@gmail.com&gt;</property>
