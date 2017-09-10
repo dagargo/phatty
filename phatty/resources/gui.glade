@@ -403,21 +403,6 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
     <property name="step_increment">1</property>
     <property name="page_increment">1</property>
   </object>
-  <object class="GtkImage" id="image1">
-    <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="stock">gtk-go-down</property>
-  </object>
-  <object class="GtkImage" id="image2">
-    <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="stock">gtk-go-up</property>
-  </object>
-  <object class="GtkImage" id="image3">
-    <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="stock">gtk-go-down</property>
-  </object>
   <object class="GtkListStore" id="keyboard_priorities">
     <columns>
       <!-- column-name name -->
@@ -876,11 +861,11 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
               </packing>
             </child>
             <child>
-              <object class="GtkToolButton" id="settings_button">
+              <object class="GtkToolButton" id="preferences_button">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="tooltip_text" translatable="yes">Settings</property>
-                <property name="label" translatable="yes">Settings</property>
+                <property name="tooltip_text" translatable="yes">Preferences</property>
+                <property name="label" translatable="yes">Preferences</property>
                 <property name="use_underline">True</property>
                 <property name="stock_id">gtk-preferences</property>
               </object>
@@ -1795,7 +1780,6 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="image">image1</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>
@@ -1810,7 +1794,6 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="image">image3</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>
@@ -1825,7 +1808,6 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="image">image2</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>
@@ -1835,11 +1817,11 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkButton" id="new_preset">
-                        <property name="label">gtk-new</property>
+                      <object class="GtkButton" id="reset_preset">
+                        <property name="label">Reset Preset</property>
+                        <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="use_stock">True</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>
@@ -1850,10 +1832,10 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                     </child>
                     <child>
                       <object class="GtkButton" id="open_preset">
-                        <property name="label">gtk-open</property>
+                        <property name="label">Open Preset</property>
+                        <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="use_stock">True</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>
@@ -1863,11 +1845,11 @@ along with Phatty.  If not, see <http://www.gnu.org/licenses/>.
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkButton" id="save_preset_as">
-                        <property name="label">gtk-save-as</property>
+                      <object class="GtkButton" id="save_preset">
+                        <property name="label">Save Preset</property>
+                        <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>
-                        <property name="use_stock">True</property>
                         <property name="always_show_image">True</property>
                       </object>
                       <packing>

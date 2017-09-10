@@ -49,9 +49,9 @@ INVALID_BANK_FILE = 'Invalid bank file'
 INVALID_BULK_FILE = 'Invalid bulk file'
 HANDSHAKE_MSG = 'Handshake ok. Version {:s}.'
 MAX_DATA = 25
-RECEIVE_RETRIES = 50
+RECEIVE_RETRIES = 150
 RETRY_SLEEP_TIME = 0.1
-MSG_LEN = 64
+MSG_LEN = 128
 SLEEP_TIME = 0.125
 FILTER_POLES_VALUES = [32 * i for i in range(0, 4)]
 MOD_SRC_5_VALUES = [0, 64]
@@ -101,7 +101,7 @@ class Connector(object):
     def disconnect(self):
         """Disconnect from the Phatty."""
         if self.port:
-            logger.debug('Disconnecing...')
+            logger.debug('Disconnecting...')
             try:
                 self.port.close()
             except IOError:
@@ -253,18 +253,22 @@ class Connector(object):
             raise ValueError(INVALID_BULK_FILE)
 
     def set_bank_from_file(self, filename):
-        data = mido.read_syx_file(filename)[0].bytes()
-        logger.debug('Read data size is {:d}B: "{:s}"...'.format(
-            len(data), self.get_hex_data(data)))
-        data = list(data[1:len(data) - 1])
-        try:
-            self.set_bank(data)
-        except ValueError as e:
-            self.set_bulk(data)
+         data = self.read_data_from_file(filename)
+         try:
+             self.set_bank(data)
+         except ValueError as e:
+             self.set_bulk(data)
 
-    def save_bank_to_file(self, filename, data):
+    def write_data_to_file(self, filename, data):
         messages = [Message('sysex', data=data)]
         mido.write_syx_file(filename, messages)
+
+    def read_data_from_file(self, filename):
+        messages = mido.read_syx_file(filename)
+        data = messages[0].bytes()
+        logger.debug('Read data size is {:d}B: "{:s}"...'.format(
+            len(data), self.get_hex_data(data)))
+        return data[1:len(data) - 1]
 
     def set_panel_name(self, name):
         logger.debug('Setting preset name to {:s}...'.format(name))

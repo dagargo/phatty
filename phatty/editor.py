@@ -38,10 +38,13 @@ GLib.threads_init()
 
 CONN_MSG = 'Connected (firmware version {:s})'
 ERROR_IN_BANK_TRANSFER = 'Error in bank transfer {:s}'
-ERROR_WHILE_SAVING_BANK = 'Error while saving bank to {:s}'
+ERROR_WHILE_SAVING_DATA = 'Error while saving data to {:s}'
+ERROR_WHILE_READING_DATA = 'Error while reading data from {:s}'
 PKG_NAME = 'phatty'
 
 glade_file = pkg_resources.resource_filename(__name__, 'resources/gui.glade')
+init_preset_file = pkg_resources.resource_filename(
+    __name__, 'resources/init_preset.syx')
 version = pkg_resources.get_distribution(PKG_NAME).version
 
 
@@ -202,8 +205,8 @@ class Editor(object):
         self.upload_button.set_sensitive(False)
         self.about_button = builder.get_object('about_button')
         self.about_button.connect('clicked', lambda widget: self.show_about())
-        self.settings_button = builder.get_object('settings_button')
-        self.settings_button.connect(
+        self.preferences_button = builder.get_object('preferences_button')
+        self.preferences_button.connect(
             'clicked', lambda widget: self.settings_dialog.show())
         self.open_button = builder.get_object('open_button')
         self.open_button.connect(
@@ -318,6 +321,15 @@ class Editor(object):
             'clicked', lambda widget: self.get_preset())
         self.upload_preset = builder.get_object('upload_preset')
         self.upload_preset.connect('clicked', lambda widget: self.set_preset())
+        self.save_preset = builder.get_object('save_preset')
+        self.save_preset.connect(
+            'clicked', lambda widget: self.save_current_preset())
+        self.open_preset = builder.get_object('open_preset')
+        self.open_preset.connect(
+            'clicked', lambda widget: self.open_into_current_preset())
+        self.reset_preset = builder.get_object('reset_preset')
+        self.reset_preset.connect(
+            'clicked', lambda widget: self.reset_current_preset())
 
         self.filter_syx = Gtk.FileFilter()
         self.filter_syx.set_name('MIDI sysex')
@@ -362,6 +374,62 @@ class Editor(object):
         except ConnectorError as e:
             GLib.idle_add(self.show_error_dialog, str(e), None)
             self.ui_reconnect()
+
+    def save_current_preset(self):
+        model, iter = self.preset_selection.get_selected()
+        active_preset = model[iter][0]
+        def_filename = model[iter][1].strip() + '.syx'
+        dialog = Gtk.FileChooserDialog('Save as', self.main_window,
+                                       Gtk.FileChooserAction.SAVE,
+                                       (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                        Gtk.STOCK_SAVE, Gtk.ResponseType.OK))
+        Gtk.FileChooser.set_do_overwrite_confirmation(dialog, True)
+        dialog.add_filter(self.filter_syx)
+        dialog.add_filter(self.filter_any)
+        dialog.set_current_name(def_filename)
+        response = dialog.run()
+        filename = dialog.get_filename()
+        dialog.destroy()
+        if response == Gtk.ResponseType.OK:
+            try:
+                data = self.sysex_presets[active_preset]
+                self.connector.write_data_to_file(filename, data)
+            except IOError as e:
+                msg = ERROR_WHILE_SAVING_DATA.format(filename)
+                desc = str(e)
+                GLib.idle_add(self.show_error_dialog, msg, desc)
+
+    def open_into_current_preset(self):
+        dialog = Gtk.FileChooserDialog('Open', self.main_window,
+                                       Gtk.FileChooserAction.OPEN,
+                                       (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                        Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+        dialog.add_filter(self.filter_syx)
+        dialog.add_filter(self.filter_any)
+        response = dialog.run()
+        filename = dialog.get_filename()
+        dialog.destroy()
+        if response == Gtk.ResponseType.OK:
+            self.override_preset(filename)
+
+    def override_preset(self, filename):
+        logger.debug('Overriding selected preset with file {:s}'.format(filename))
+        try:
+            data = self.connector.read_data_from_file(filename)
+            model, iter = self.preset_selection.get_selected()
+            active_preset = model[iter][0]
+            preset.set_number(data, active_preset)
+            self.sysex_presets[active_preset] = data
+            model[iter][1] = preset.get_name(data)
+            self.set_preset_attributes(active_preset)
+            self.connector.tx_message(data)
+        except (IOError, ConnectorError) as e:
+            msg = ERROR_WHILE_READING_DATA.format(filename)
+            desc = str(e)
+            GLib.idle_add(self.show_error_dialog, msg, desc)
+
+    def reset_current_preset(self):
+        self.override_preset(init_preset_file)
 
     def set_preset_attributes(self, id):
         active_preset = self.sysex_presets[id]
@@ -414,10 +482,11 @@ class Editor(object):
     def selection_changed(self, selection):
         model, iter = selection.get_selected()
         if iter != None:
-            logger.debug('Preset {:d} selected'.format(model[iter][0]))
+            id = model[iter][0]
+            logger.debug('Preset {:d} selected'.format(id))
             try:
-                self.connector.set_preset(model[iter][0])
-                self.set_preset_attributes(model[iter][0])
+                self.connector.set_preset(id)
+                self.set_preset_attributes(id)
             except ConnectorError as e:
                 GLib.idle_add(self.show_error_dialog, str(e), None)
                 self.ui_reconnect()
@@ -467,7 +536,7 @@ class Editor(object):
     def set_sensitivities(self):
         for c in [self.open_button, self.save_button, self.download_button, self.settings_dialog.lfo_midi_sync]:
             c.set_sensitive(self.connector.connected())
-        for c in [self.main_container, self.upload_button, self.download_panel, self.download_preset, self.upload_preset]:
+        for c in [self.main_container, self.upload_button, self.download_panel, self.download_preset, self.upload_preset, self.save_preset, self.open_preset, self.reset_preset]:
             c.set_sensitive(self.connector.connected()
                             and len(self.sysex_presets) > 0)
 
@@ -475,6 +544,7 @@ class Editor(object):
         logger.debug('Starting download thread...')
         self.transfer_dialog.show_fraction('Downloading presets')
         self.transferring.acquire()
+        self.preset_selection.unselect_all()
         self.presets.clear()
         self.sysex_presets.clear()
         self.thread = Thread(target=self.do_download)
@@ -618,9 +688,9 @@ class Editor(object):
         dialog.destroy()
         if response == Gtk.ResponseType.OK:
             try:
-                self.connector.save_bank_to_file(filename, data)
+                self.connector.write_data_to_file(filename, data)
             except IOError as e:
-                msg = ERROR_WHILE_SAVING_BANK.format(filename)
+                msg = ERROR_WHILE_SAVING_DATA.format(filename)
                 desc = str(e)
                 GLib.idle_add(self.show_error_dialog, msg, desc)
 

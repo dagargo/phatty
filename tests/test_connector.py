@@ -22,6 +22,7 @@ import os
 import phatty
 import mido
 from mido import Message
+import mock
 from mock import Mock
 from mock import call
 from phatty.connector import Connector
@@ -174,13 +175,24 @@ class Test(unittest.TestCase):
         except ValueError:
             self.assertTrue(True)
 
-    def test_save_bank_to_file(self):
+    def test_write_data_to_file(self):
         data = [1, 2, 3]
         filename = 'foo'
         messages = [Message('sysex', data=data)]
         mido.write_syx_file = Mock()
-        self.connector.save_bank_to_file(filename, data)
+        self.connector.write_data_to_file(filename, data)
         mido.write_syx_file.assert_called_once_with(filename, messages)
+
+    def return_sysex(filename):
+        data = [1, 2, 3]
+        return [Message('sysex', data=data)]
+
+    @mock.patch('mido.read_syx_file', side_effect=return_sysex)
+    def test_read_data_from_file(self, mock):
+        filename = 'foo'
+        data = self.connector.read_data_from_file(filename)
+        mido.read_syx_file.assert_called_once_with(filename)
+        self.assertEqual(data, [1, 2, 3])
 
     def test_set_panel_name(self):
         name = 'ABCabc123'
