@@ -196,3 +196,22 @@ class Test(unittest.TestCase):
     def test_set_arp_clock_division(self):
         self.check_getter_and_setter(
             preset.get_arp_clock_division, preset.set_arp_clock_division, preset.ARP_CLOCK_DIVISION_PARAMETERS)
+
+    def test_get_12b_bytes(self):
+        self.assertEqual(preset.get_12b_bytes(0), [0x3, 0x3f, 0xf])
+        self.assertEqual(preset.get_12b_bytes(4095), [0, 0, 0])
+        self.assertEqual(preset.get_12b_bytes(843), [0x3, 0xb, 0x4])
+        self.assertEqual(preset.get_12b_bytes(3171), [0, 0x39, 0xc])
+        self.assertEqual(preset.get_12b_bytes(1797), [0x2, 0xf, 0xa])
+        self.assertEqual(preset.get_12b_bytes(731), [0x3, 0x12, 0x4])
+        self.assertEqual(preset.get_12b_bytes(2125), [0x1, 0x3b, 0x2])
+
+    def test_get_12b_value(self):
+        self.assertEqual(preset.get_12b_value([0x3, 0x3f, 0xf]), 0)
+        self.assertEqual(preset.get_12b_value([0, 0, 0]), 4095)
+        self.assertEqual(preset.get_12b_value([0x3, 0xb, 0x4]), 843)
+        self.assertEqual(preset.get_12b_value([0, 0x39, 0xc]), 3171)
+        self.assertEqual(preset.get_12b_value([0x2, 0xf, 0xa]), 1797)
+        self.assertEqual(preset.get_12b_value([0x3, 0x12, 0x4]), 731)
+        self.assertEqual(preset.get_12b_value([0x1, 0x3b, 0x2]), 2125)
+

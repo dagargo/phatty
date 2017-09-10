@@ -54,6 +54,9 @@ ARP_GATE_PARAMETERS = [[0, 1, 2, 3], 0xbb, 0xc, 2]
 ARP_CLOCK_SOURCE_PARAMETERS = [[0, 1, 2], 0x50, 0x6, 1]
 ARP_CLOCK_DIVISION_PARAMETERS = [[i for i in range(0, 23)], 0xb9, 0x1f, 0]
 
+FILTER_CUTOFF_START_BYTE = 85
+FILTER_ATTACK_START_BYTE = 61
+
 
 def get_char(preset, position):
     k = (3 * int(position / 2)) + 22
@@ -307,3 +310,13 @@ def set_arp_clock_division(preset, value):
 
 def get_arp_clock_division(preset):
     return get_preset_value(preset, ARP_CLOCK_DIVISION_PARAMETERS)
+
+
+def get_12b_bytes(v):
+    v = ~(v & 0xfff)
+    return [(v & 0xc00) >> 10, (v & 0x3f0) >> 4, v & 0xf ]
+
+
+def get_12b_value(bytes):
+    v = (((bytes[0] & 0x3) << 10) | ((bytes[1] & 0x3f) << 4) | (bytes[2] & 0xf))
+    return (~v) & 0xfff
