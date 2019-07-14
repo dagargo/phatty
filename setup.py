@@ -12,7 +12,6 @@ setup(name='Phatty',
     packages=find_packages(exclude=['tests']),
     package_data={'phatty': ['resources/*']},
     license='GNU General Public License v3 (GPLv3)',
-    install_requires=['mido>=1.2.5', 'python-rtmidi>=1.0.0'],
     test_suite='tests',
     tests_require=['mock']
 )
