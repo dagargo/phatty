@@ -1,19 +1,20 @@
 # Phatty
 
-Phatty is an library editor for the Moog Little Phatty. It has been designed to work together with the synth by providing a easy edition of hidden parameters. However, it does not provide fully editing capabilities since no computer screen can replace real knobs. Besides, you will be able to rename and rearrange presets.
+Phatty is a library editor for the Moog Little Phatty. It has been designed to work together with the synth by providing an easy edition of the hidden parameters. Besides, you will be able to rename and rearrange presets.
+
+![Screenshot](doc/screenshot.png)
 
 ## Installation
+Phatty is a Python package that is installed the standard way with `python3 setup.py install`. However, as it contains desktop application related resources, it is installed with `make`.
 
 The package dependencies for Debian based distributions are:
+- make
 - python3
 - python3-setuptools
-- make
-- gcc and g++
-- libpython3-dev
-- libasound2-dev
-- libjack-jackd2-dev
+- python3-mido
+- python3-rtmidi
 
-You can easily install them by running `sudo apt-get install python3 python3-setuptools make gcc g++ libpython3-dev libasound2-dev libjack-jackd2-dev`.
+You can easily install them by running `sudo apt-get install make python3 python3-setuptools python3-mido python3-rtmidi`.
 
 To install Phatty symply run `make && sudo make install`.
 
