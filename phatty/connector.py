@@ -51,8 +51,8 @@ HANDSHAKE_MSG = 'Handshake ok. Version {:s}.'
 MAX_DATA = 25
 RECEIVE_RETRIES = 150
 RETRY_SLEEP_TIME = 0.1
-MSG_LEN = 128
-SLEEP_TIME = 0.125
+MSG_LEN = 2
+SLEEP_TIME = 0.0005
 FILTER_POLES_VALUES = [32 * i for i in range(0, 4)]
 MOD_SRC_5_VALUES = [0, 64]
 MOD_SRC_6_VALUES = [0, 64]
@@ -124,16 +124,19 @@ class Connector(object):
             raise ValueError('send() called on closed port')
 
         with self.port._lock:
-            if msg.type == 'sysex':
-                t = msg.copy().bytes()
-                while len(t) > MSG_LEN:
-                    h = t[:MSG_LEN]
-                    t = t[MSG_LEN:]
-                    self.port.output._rt.send_message(h)
-                    time.sleep(SLEEP_TIME)
-                self.port.output._rt.send_message(t)
-            else:
-                self.port.output._rt.send_message(msg.bytes())
+            try:
+                if msg.type == 'sysex':
+                    t = msg.copy().bytes()
+                    while len(t) > MSG_LEN:
+                        h = t[:MSG_LEN]
+                        t = t[MSG_LEN:]
+                        self.port.output._rt.send_message(h)
+                        time.sleep(SLEEP_TIME)
+                    self.port.output._rt.send_message(t)
+                else:
+                    self.port.output._rt.send_message(msg.bytes())
+            except ValueError as e:
+                raise IOError(e)
 
     def connect(self, device, callback):
         """Connect to the Phatty."""
