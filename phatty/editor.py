@@ -40,16 +40,15 @@ CONN_MSG = 'Connected (firmware version {:s})'
 ERROR_IN_BANK_TRANSFER = 'Error in bank transfer {:s}'
 ERROR_WHILE_SAVING_DATA = 'Error while saving data to {:s}'
 ERROR_WHILE_READING_DATA = 'Error while reading data from {:s}'
-PKG_NAME = 'phatty'
 
 glade_file = pkg_resources.resource_filename(__name__, 'resources/gui.glade')
 init_preset_file = pkg_resources.resource_filename(
     __name__, 'resources/init_preset.syx')
-version = pkg_resources.get_distribution(PKG_NAME).version
+version = pkg_resources.get_distribution(utils.APP_NAME).version
 
 
 def print_help():
-    print('Usage: {:s} [-v]'.format(PKG_NAME))
+    print('Usage: {:s} [-v]'.format(utils.APP_NAME))
 
 log_level = logging.ERROR
 try:
@@ -215,7 +214,7 @@ class Editor(object):
         self.save_button.connect(
             'clicked', lambda widget: self.save_bank_to_file())
         self.statusbar = builder.get_object('statusbar')
-        self.context_id = self.statusbar.get_context_id(PKG_NAME)
+        self.context_id = self.statusbar.get_context_id(utils.APP_NAME)
         self.preset_list = builder.get_object('preset_list')
         self.presets = builder.get_object('preset_liststore')
         self.preset_selection = builder.get_object('preset_selection')

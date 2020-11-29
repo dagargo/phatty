@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 from phatty.editor import Editor
+import phatty.utils
 import signal
+import setproctitle
 
 
 def quit(signum, frame):
@@ -10,5 +12,6 @@ def quit(signum, frame):
 
 signal.signal(signal.SIGINT, quit)
 
+setproctitle.setproctitle(phatty.utils.APP_NAME)
 editor = Editor()
 editor.main()
