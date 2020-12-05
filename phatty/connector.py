@@ -85,7 +85,11 @@ def create_controller(control, value):
 
 
 def get_ports():
-    return mido.get_ioport_names()
+    filtered = []
+    for p in mido.get_ioport_names():
+        if 'Phatty' in p:
+            filtered.append(p)
+    return filtered
 
 
 class Connector(object):

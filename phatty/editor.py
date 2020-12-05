@@ -126,17 +126,8 @@ class SettingsDialog(object):
         self.dialog = builder.get_object('settings_dialog')
         self.accept = builder.get_object('settings_accept_button')
         self.cancel = builder.get_object('settings_cancel_button')
-        self.devices = builder.get_object('device_combo')
-        self.device_liststore = builder.get_object('device_liststore')
         self.bulk_switch = builder.get_object('bulk_switch')
         self.auto_switch = builder.get_object('auto_switch')
-        # These are global parameters and hence are neither is stored in
-        # presets nor its value can be recalled
-        self.lfo_midi_sync = builder.get_object('lfo_midi_sync')
-        self.lfo_midi_sync.connect('state-set', lambda widget, state: self.phatty.call_connector(
-            self.phatty.connector.set_lfo_midi_sync,
-            1 if state else 0))
-
         self.dialog.set_transient_for(phatty.main_window)
         self.dialog.connect('delete-event', lambda widget,
                             event: widget.hide() or True)
@@ -144,33 +135,14 @@ class SettingsDialog(object):
         self.accept.connect('clicked', lambda widget: self.save())
 
     def show(self):
-        self.device_liststore.clear()
-        i = 0
-        for port in connector.get_ports():
-            logger.debug('Adding port {:s}...'.format(port))
-            self.device_liststore.append([port])
-            if self.phatty.config[utils.DEVICE] == port:
-                logger.debug('Port {:s} is active'.format(port))
-                self.devices.set_active(i)
-            i += 1
         self.bulk_switch.set_active(self.phatty.config[utils.BULK_ON])
         self.auto_switch.set_active(self.phatty.config[utils.DOWNLOAD_AUTO])
-        self.lfo_midi_sync.set_active(self.phatty.config[utils.LFO_MIDI_SYNC])
         self.dialog.show()
 
     def save(self):
-        active = self.devices.get_active()
-        device = self.device_liststore[active][0]
-        self.phatty.config[utils.DEVICE] = device
         self.phatty.config[utils.BULK_ON] = self.bulk_switch.get_active()
         self.phatty.config[utils.DOWNLOAD_AUTO] = self.auto_switch.get_active()
-        self.phatty.config[
-            utils.LFO_MIDI_SYNC] = self.lfo_midi_sync.get_active()
-        logger.debug('Configuration: {:s}'.format(str(self.phatty.config)))
-        utils.write_config(self.phatty.config)
-        self.phatty.ui_reconnect()
         self.dialog.hide()
-
 
 class Editor(object):
     """Phatty user interface"""
@@ -182,6 +154,31 @@ class Editor(object):
         self.config = utils.read_config()
         self.transferring = Lock()
 
+    def load_devices(self, select):
+        self.device_liststore.clear()
+        i = 0
+        found = -1
+        for port in connector.get_ports():
+            logger.debug('Adding port {:s}...'.format(port))
+            self.device_liststore.append([port])
+            if self.config[utils.DEVICE] == port and select:
+                logger.debug('Port {:s} is active'.format(port))
+                found = i
+            i += 1
+        self.device_combo.set_active(found)
+        if select and self.device_combo.get_active() == -1:
+            self.ui_reconnect()
+
+    def set_ui_config(self):
+        self.configuring = True
+        self.load_devices(True)
+        self.lfo_midi_sync.set_state(self.config[utils.LFO_MIDI_SYNC])
+        self.configuring = False
+
+    def save_config(self):
+        logger.debug('Configuration: {:s}'.format(str(self.config)))
+        utils.write_config(self.config)
+
     def init_ui(self):
         self.main_window = builder.get_object('main_window')
         self.main_window.connect(
@@ -189,12 +186,19 @@ class Editor(object):
         self.main_window.set_position(Gtk.WindowPosition.CENTER)
         self.main_container = builder.get_object('main_container')
         self.about_dialog = builder.get_object('about_dialog')
-        self.about_dialog.set_position(Gtk.WindowPosition.CENTER)
-        self.about_dialog.set_transient_for(self.main_window)
         self.about_dialog.set_version(version)
-        self.connect_button = builder.get_object('connect_button')
-        self.connect_button.connect(
-            'clicked', lambda widget: self.ui_reconnect())
+
+        self.device_combo = builder.get_object('device_combo')
+        self.device_combo.connect('changed', lambda widget: self.set_device())
+        self.device_liststore = builder.get_object('device_liststore')
+        self.refresh_button = builder.get_object('refresh_button')
+        self.refresh_button.connect(
+            'clicked', lambda widget: self.load_devices(False))
+        # These are global parameters and hence are neither is stored in
+        # presets nor its value can be recalled
+        self.lfo_midi_sync = builder.get_object('lfo_midi_sync')
+        self.lfo_midi_sync.connect('state-set', lambda widget, state: self.set_lfo_midi_sync(state))
+
         self.download_button = builder.get_object('download_button')
         self.download_button.connect(
             'clicked', lambda widget: self.download_presets())
@@ -480,7 +484,7 @@ class Editor(object):
 
     def selection_changed(self, selection):
         model, iter = selection.get_selected()
-        if iter != None:
+        if iter:
             id = model[iter][0]
             logger.debug('Preset {:d} selected'.format(id))
             try:
@@ -515,7 +519,7 @@ class Editor(object):
 
     def connect(self):
         device = self.config[utils.DEVICE]
-        self.connector.connect(device, self.callback)
+        self.connector.connect(device, self.connect_callback)
         if self.connector.connected():
             conn_msg = CONN_MSG.format(self.connector.sw_version)
             self.set_status_msg(conn_msg)
@@ -523,17 +527,17 @@ class Editor(object):
             self.set_status_msg('Not connected')
 
     def ui_reconnect(self):
-        if not self.connector.connected():
-            self.connect()
-            self.set_ui()
+        self.connect()
+        self.set_ui()
 
     def set_ui(self):
-        if self.connector.connected() and self.config[utils.DOWNLOAD_AUTO]:
-            self.download_presets()
+        if self.connector.connected():
+            if self.config[utils.DOWNLOAD_AUTO]:
+                self.download_presets()
         self.set_sensitivities()
 
     def set_sensitivities(self):
-        for c in [self.open_button, self.save_button, self.download_button, self.settings_dialog.lfo_midi_sync]:
+        for c in [self.open_button, self.save_button, self.download_button, self.lfo_midi_sync]:
             c.set_sensitive(self.connector.connected())
         for c in [self.main_container, self.upload_button, self.download_panel, self.download_preset, self.upload_preset, self.save_preset, self.open_preset, self.reset_preset]:
             c.set_sensitive(self.connector.connected()
@@ -541,9 +545,9 @@ class Editor(object):
 
     def download_presets(self):
         logger.debug('Starting download thread...')
+        self.preset_selection.unselect_all()
         self.transfer_dialog.show_fraction('Downloading presets')
         self.transferring.acquire()
-        self.preset_selection.unselect_all()
         self.presets.clear()
         self.sysex_presets.clear()
         self.thread = Thread(target=self.do_download)
@@ -723,7 +727,17 @@ class Editor(object):
         self.about_dialog.run()
         self.about_dialog.hide()
 
-    def callback(self, message):
+    def set_device(self):
+        active = self.device_combo.get_active()
+        if active > -1:
+            device = self.device_liststore[active][0]
+        else:
+            device = ''
+        self.config[utils.DEVICE] = device
+        self.ui_reconnect()
+
+    def connect_callback(self, message):
+        self.call_connector(self.connector.set_lfo_midi_sync, 1 if self.config[utils.LFO_MIDI_SYNC] else 0)
         if message.type == 'program_change':
             program = message.program
             logger.debug('Preset {:d} selected'.format(program))
@@ -734,6 +748,11 @@ class Editor(object):
                 self.preset_selection.connect(
                     'changed', self.selection_changed)
 
+    def set_lfo_midi_sync(self, state):
+        self.config[utils.LFO_MIDI_SYNC] = state
+        if not self.configuring:
+            self.call_connector(self.connector.set_lfo_midi_sync, 1 if state else 0)
+
     def quit(self):
         logger.debug('Quitting...')
         self.connector.disconnect()
@@ -742,6 +761,6 @@ class Editor(object):
 
     def main(self):
         self.init_ui()
-        self.connect()
-        self.set_ui()
+        self.set_ui_config()
         Gtk.main()
+        self.save_config()
