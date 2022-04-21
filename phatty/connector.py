@@ -112,47 +112,15 @@ class Connector(object):
                 logger.error('IOError while disconnecting')
             self.port = None
 
-    # We are overriding the send function in mido ports.py.
-    # The reason is that the ALSA sequencer has a buffer smaller than the
-    # bank or bulk size.
-    def send(self, msg):
-        """Send a message on the port.
-        A copy of the message will be sent, so you can safely modify
-        the original message without any unexpected consequences.
-        """
-        if not self.port.is_output:
-            raise ValueError('Not an output port')
-        elif not isinstance(msg, Message):
-            raise TypeError('argument to send() must be a Message')
-        elif self.port.closed:
-            raise ValueError('send() called on closed port')
-
-        with self.port._lock:
-            try:
-                if msg.type == 'sysex':
-                    t = msg.copy().bytes()
-                    while len(t) > MSG_LEN:
-                        h = t[:MSG_LEN]
-                        t = t[MSG_LEN:]
-                        self.port.output._rt.send_message(h)
-                        time.sleep(SLEEP_TIME)
-                    self.port.output._rt.send_message(t)
-                else:
-                    self.port.output._rt.send_message(msg.bytes())
-            except ValueError as e:
-                raise IOError(e)
-
     def connect(self, device, callback):
         """Connect to the Phatty."""
         logger.debug('Connecting to {:s}...'.format(device))
         try:
             self.port = mido.open_ioport(device)
             self.callback = callback
-            self.port.send = self.send
             logger.debug('Handshaking...')
             self.tx_message(INIT_MSG)
             response = self.rx_message()
-            self.port.callback = self.process_message
             if response[0:9] == PHATTY_MSG_WO_VERSION:
                 self.sw_version = '.'.join([str(i) for i in response[9:13]])
                 logger.debug(HANDSHAKE_MSG.format(self.sw_version))
@@ -163,10 +131,6 @@ class Connector(object):
             logger.error('IOError while connecting: "{:s}"'.format(str(e)))
             self.disconnect()
 
-    def process_message(self, message):
-        logger.debug('Processing message...')
-        self.callback(message)
-
     def get_panel_as_preset(self, preset):
         msg = self.get_panel()
         msg[2] = 0x5
@@ -174,20 +138,16 @@ class Connector(object):
         return msg
 
     def get_panel(self):
-        self.port.callback = None
         self.tx_message(REQUEST_PANEL)
         m = self.rx_message()
-        self.port.callback = self.process_message
         return m
 
     def get_preset(self, num):
-        self.port.callback = None
         msg = []
         msg.extend(REQUEST_PATCH)
         msg[REQ_PATCH_BYTE] = num
         self.tx_message(msg)
         m = self.rx_message()
-        self.port.callback = self.process_message
         return m
 
     def set_preset(self, id):
@@ -232,18 +192,12 @@ class Connector(object):
         return s
 
     def get_bank(self):
-        self.port.callback = None
         self.tx_message(REQUEST_BANK)
-        m = self.rx_message()
-        self.port.callback = self.process_message
-        return m
+        return self.rx_message()
 
     def get_bulk(self):
-        self.port.callback = None
         self.tx_message(REQUEST_BULK)
-        m = self.rx_message()
-        self.port.callback = self.process_message
-        return m
+        return self.rx_message()
 
     def set_bank(self, data):
         logger.debug('Sending bank...')
