@@ -25,7 +25,7 @@ uninstall:
 	rm $(DESKTOP_FILES_DIR)/$(TARGET).desktop
 
 test:
-	python3 setup.py test
+	python3 -m unittest discover
 
 clean:
 	python3 setup.py clean --all
