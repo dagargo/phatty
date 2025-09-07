@@ -13,10 +13,11 @@ The package dependencies for Debian based distributions are:
 - python3
 - python3-setuptools
 - python3-mido
+- python3-mock
 - python3-rtmidi
 - python3-setproctitle
 
-You can easily install them by running `sudo apt-get install make python3 python3-setuptools python3-mido python3-rtmidi python3-setproctitle`.
+You can easily install them by running `sudo apt-get install make python3 python3-setuptools python3-mido python3-mock python3-rtmidi python3-setproctitle`.
 
 To install Phatty symply run `make && sudo make install`.
 
